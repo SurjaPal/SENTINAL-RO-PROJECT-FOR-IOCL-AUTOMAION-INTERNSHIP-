@@ -1,0 +1,17 @@
+# Sentinel-RO — Week 1-2 dependencies
+#
+# NOTE: none of these were installable in the sandbox this project was
+# built in (today's network policy returned 403s for both PyPI and the
+# Ubuntu apt mirrors — see README.md). Versions below are pinned to
+# recent-stable as of early 2026; adjust if you hit a resolver conflict.
+
+paho-mqtt==2.1.0          # MQTT client — simulator + direct ingestion path
+psycopg2-binary==2.9.10    # TimescaleDB/PostgreSQL driver
+confluent-kafka>=2.5.0    # Kafka client — bridge + sink (path B only)
+python-dotenv==1.0.1      # optional: load .env into os.environ for local runs
+
+# Week 3-4 (Module 3) — these three WERE available in the build sandbox and
+# are pinned to the exact versions the tests actually ran against:
+pandas==3.0.2
+scikit-learn==1.8.0
+scipy==1.17.1

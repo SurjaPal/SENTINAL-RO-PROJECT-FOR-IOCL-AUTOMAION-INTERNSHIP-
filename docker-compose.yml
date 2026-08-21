@@ -1,0 +1,70 @@
+version: "3.8"
+
+# Sentinel-RO local dev stack — Week 1-2.
+#
+# NOTE: this exact compose file has NOT been run end-to-end in the
+# environment this was built in (no Docker available there, and today's
+# network policy blocked apt/pip installs of mosquitto/postgres too — see
+# README.md "What's actually been tested"). Each image is a standard,
+# widely-used one; run `docker compose up -d` on your own machine and use
+# the smoke test in README.md to confirm it before building on top of it.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  # Kafka-API-compatible broker. Single binary, no ZooKeeper — much lighter
+  # than real Apache Kafka for a laptop dev box, same client protocol, so
+  # confluent-kafka-python talks to it exactly as it would talk to real Kafka.
+  redpanda:
+    image: redpandadata/redpanda:latest
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./schema:/docker-entrypoint-initdb.d:ro   # auto-runs 001_init.sql on first boot
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: sentinel
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - timescaledb
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    command: ["--broker", "mosquitto", "--dsn", "dbname=sentinel user=sentinel password=sentinel host=timescaledb"]
+    depends_on:
+      - mosquitto
+      - timescaledb
+
+volumes:
+  timescale_data:

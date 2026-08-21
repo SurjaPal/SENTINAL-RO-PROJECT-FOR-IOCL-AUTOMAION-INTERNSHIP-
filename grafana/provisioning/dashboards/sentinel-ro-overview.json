@@ -1,0 +1,87 @@
+{
+  "title": "Sentinel-RO Overview",
+  "uid": "sentinel-ro-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "tags": ["sentinel-ro"],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Open Alarms (ATG + DU + Connectivity)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }
+      ] } }, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT count(*) FROM (SELECT 1 FROM atg_alarms WHERE cleared_at IS NULL UNION ALL SELECT 1 FROM du_alarms WHERE cleared_at IS NULL UNION ALL SELECT 1 FROM connectivity_alarms WHERE status = 'down') t", "refId": "A" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Urgent Triage Suggestions (24h)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "red", "value": 1 }
+      ] } }, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT count(*) FROM triage_suggestions WHERE priority = 'urgent' AND time > now() - interval '24 hours'", "refId": "A" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Module 1: Flagged Fault Alerts (24h)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "orange", "value": 1 }
+      ] } }, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT count(*) FROM fault_alerts WHERE flagged AND time > now() - interval '24 hours'", "refId": "A" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Module 3: Flagged Reconciliation Anomalies (24h)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "orange", "value": 1 }
+      ] } }, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT count(*) FROM reconciliation_anomalies WHERE flagged AND time > now() - interval '24 hours'", "refId": "A" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Module 1: Battery Voltage — ROs with a recent flagged alert",
+      "description": "Only plots ROs that fault_alerts has flagged in the selected window, so a healthy fleet renders an empty (not cluttered) chart.",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "volt" }, "overrides": [] },
+      "targets": [ { "format": "time_series", "rawSql": "SELECT time, battery_voltage, ro_id FROM psp_parameters WHERE ro_id IN (SELECT DISTINCT ro_id FROM fault_alerts WHERE flagged AND time > now() - interval '24 hours') AND $__timeFilter(time) ORDER BY time ASC", "refId": "A" } ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Module 3: Stock Reconciliation Variance",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "litre" }, "overrides": [] },
+      "targets": [ { "format": "time_series", "rawSql": "SELECT time AS \"time\", variance_ltr, ro_id || '/' || tank_id AS metric FROM aip_stock_snapshots WHERE $__timeFilter(time) ORDER BY time", "refId": "A" } ]
+    },
+    {
+      "id": 7, "type": "table", "title": "Module 2: Recent Triage Suggestions",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "priority" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "urgent": { "color": "red" }, "normal": { "color": "text" } } } ] } ] }
+      ] },
+      "targets": [ { "format": "table", "rawSql": "SELECT time, ro_id, complaint_category, suggested_root_cause, confidence, priority, evidence FROM triage_suggestions ORDER BY time DESC LIMIT 50", "refId": "A" } ]
+    },
+    {
+      "id": 8, "type": "table", "title": "Module 1: Recent Flagged Fault Alerts",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT time, ro_id, device_id, battery_voltage, detector, risk_score FROM fault_alerts WHERE flagged ORDER BY time DESC LIMIT 50", "refId": "A" } ]
+    },
+    {
+      "id": 9, "type": "table", "title": "Module 3: Recent Flagged Reconciliation Anomalies",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT time, ro_id, tank_id, variance_ltr, detector, anomaly_score FROM reconciliation_anomalies WHERE flagged ORDER BY time DESC LIMIT 50", "refId": "A" } ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+apiVersion: 1
+
+# Auto-provisions the TimescaleDB connection. This file must live at
+# provisioning/datasources/*.yml specifically — Grafana only scans that
+# subdirectory for datasource config, not provisioning/ directly. It was
+# misplaced one level up until Week 7-8 caught it while wiring up the
+# dashboard below, which needs a stable `uid` to reference.
+datasources:
+  - uid: sentinel-timescaledb
+    name: Sentinel-RO TimescaleDB
+    type: postgres
+    access: proxy
+    url: timescaledb:5432
+    database: sentinel
+    user: sentinel
+    secureJsonData:
+      password: sentinel
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: true
+      database: sentinel

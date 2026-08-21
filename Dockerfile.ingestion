@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the ingestion folder
+COPY ingestion/ /app/ingestion/
+
+# Set the entrypoint to the Python interpreter
+ENTRYPOINT ["python", "ingestion/direct_mqtt_to_timescale.py"]

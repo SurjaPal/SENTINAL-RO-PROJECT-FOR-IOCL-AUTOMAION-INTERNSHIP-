@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the analytics folder
+COPY analytics/ /app/analytics/
+
+# This container will be run with different arguments for each batch job
+# (e.g. python -m analytics.module1_fault_alerts.run_batch)
+ENTRYPOINT ["python", "-m"]
