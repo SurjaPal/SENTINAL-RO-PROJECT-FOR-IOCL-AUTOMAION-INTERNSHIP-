@@ -49,7 +49,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: sentinel
     volumes:
@@ -57,14 +57,68 @@ services:
     depends_on:
       - timescaledb
 
-  ingestion:
+  mqtt_to_kafka_bridge:
     build:
       context: .
       dockerfile: Dockerfile.ingestion
-    command: ["--broker", "mosquitto", "--dsn", "dbname=sentinel user=sentinel password=sentinel host=timescaledb"]
+    command: ["python", "ingestion/kafka_pipeline/bridge_mqtt_to_kafka.py", "--broker", "${PILOT_MQTT_BROKER:-mosquitto}", "--kafka", "redpanda:9092"]
     depends_on:
       - mosquitto
+      - redpanda
+
+  kafka_to_timescale_sink:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    command: ["python", "ingestion/kafka_pipeline/sink_kafka_to_timescale.py", "--kafka", "redpanda:9092", "--dsn", "dbname=sentinel user=sentinel password=sentinel host=timescaledb"]
+    restart: on-failure
+    depends_on:
+      - redpanda
       - timescaledb
+
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulator
+    command: ["--broker", "mosquitto", "--ros", "10", "--anomaly-rate", "0.05"]
+    depends_on:
+      - mosquitto
+
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile.analytics
+    command: ["analytics.module1_fault_alerts.run_batch"]
+    restart: on-failure
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONUNBUFFERED=1
+      - SENTINEL_DB_DSN=dbname=sentinel user=sentinel password=sentinel host=timescaledb
+    depends_on:
+      - redpanda
+      - timescaledb
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - timescaledb
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      - timescaledb
+      - grafana
 
 volumes:
   timescale_data:
+

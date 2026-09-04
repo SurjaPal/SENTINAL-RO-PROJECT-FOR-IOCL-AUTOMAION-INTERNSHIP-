@@ -1,0 +1,54 @@
+{
+  "title": "Sentinel-RO Drilldown",
+  "uid": "sentinel-ro-drilldown",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "tags": ["sentinel-ro", "drilldown"],
+  "templating": {
+    "list": [
+      {
+        "name": "ro_id",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+        "query": "SELECT DISTINCT ro_id FROM retail_outlets;",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Reconciliation Variance (Ltr) for $ro_id",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": { "unit": "litre" }, "overrides": [] },
+      "targets": [ { "format": "time_series", "rawSql": "SELECT time AS \"time\", variance_ltr, tank_id AS metric FROM aip_stock_snapshots WHERE ro_id = '$ro_id' AND $__timeFilter(time) ORDER BY time", "refId": "A" } ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Anomaly Scores for $ro_id",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [ { "format": "time_series", "rawSql": "SELECT time AS \"time\", anomaly_score, detector || ' (' || tank_id || ')' AS metric FROM reconciliation_anomalies WHERE ro_id = '$ro_id' AND $__timeFilter(time) ORDER BY time", "refId": "A" } ]
+    },
+    {
+      "id": 3, "type": "table", "title": "Complaints for $ro_id",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT time, complaint_id, raw_text FROM complaints WHERE ro_id = '$ro_id' ORDER BY time DESC LIMIT 20", "refId": "A" } ]
+    },
+    {
+      "id": 4, "type": "table", "title": "Triage Suggestions for $ro_id",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "sentinel-timescaledb" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [ { "format": "table", "rawSql": "SELECT time, complaint_category, suggested_root_cause, priority FROM triage_suggestions WHERE ro_id = '$ro_id' ORDER BY time DESC LIMIT 20", "refId": "A" } ]
+    }
+  ]
+}

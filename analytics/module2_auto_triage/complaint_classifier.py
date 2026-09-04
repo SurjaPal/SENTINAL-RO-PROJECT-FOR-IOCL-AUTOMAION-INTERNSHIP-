@@ -1,21 +1,22 @@
 """
-Sentinel-RO — Module 2 (Week 7-8): complaint classifier.
+Sentinel-RO — Module 2 (Phase 3 Upgrade): LLM-powered complaint classifier.
 
-The roadmap calls this out specifically as "rule-based root-cause
-suggestion, not full NLP yet" — so this is deliberately a keyword matcher,
-not a model. The learning guide's fastText -> Hugging Face -> IndicBERT
-path is the documented upgrade route once this thin version proves the
-correlation logic in correlator.py is worth the trouble — building the NLP
-layer before knowing whether the correlation rules even work would be
-solving the wrong problem first.
-
-Categories are deliberately narrow and tied to what Sentinel-RO's schema
-can actually corroborate (see correlator.py) — a category this classifier
-can't back up with any telemetry is worse than not classifying it at all,
-since a confident-looking wrong suggestion erodes ACC trust faster than an
-honest "couldn't tell."
+Uses Google Gemini to parse free-text e-RACTS complaints into rigid categories
+that the deterministic correlator can process. If the API key is missing or the
+call fails, it degrades gracefully to the Phase 2 keyword matcher.
 """
 from __future__ import annotations
+
+import os
+import logging
+from pydantic import BaseModel
+
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
+logger = logging.getLogger(__name__)
 
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "no_dispensing": [
@@ -28,7 +29,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     ],
     "price_mismatch": [
         "wrong price", "price issue", "rate wrong", "price mismatch", "billed wrong",
-        "overcharged", "amount mismatch",
+        "overcharged", "amount mismatch", "variance", "dip reading",
     ],
     "screen_issue": [
         "screen blank", "display not working", "console dead", "screen not showing",
@@ -40,24 +41,51 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
-# Categories Sentinel-RO's current schema has NO telemetry table to
-# corroborate against (no POS/ITPS ingestion yet — see README). Kept
-# separate from CATEGORY_KEYWORDS so the classifier can still name them
-# honestly rather than silently mis-bucketing them into something it can
-# check, and correlator.py knows to skip straight to "needs manual
-# diagnosis" for these rather than pretending to investigate.
 UNCORROBORATED_CATEGORIES = {"screen_issue", "card_payment_issue"}
 
+class ComplaintClassification(BaseModel):
+    category: str
 
-def classify_complaint(text: str) -> str:
-    """Returns the first matching category (dict insertion order = priority
-    order — no_dispensing checked first since it's the highest-revenue-impact
-    category, matching the penalty structure researched for the field-officer
-    briefing: dispensing-affecting downtime is penalised at a materially
-    higher rate than other equipment). Returns "unclassified" if nothing
-    matches — an honest miss, not a forced guess."""
+def classify_with_keyword_fallback(text: str) -> str:
     lowered = text.lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in lowered for kw in keywords):
             return category
     return "unclassified"
+
+def classify_complaint(text: str) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or not genai:
+        logger.warning("GEMINI_API_KEY or google-genai not found. Falling back to keyword matcher.")
+        return classify_with_keyword_fallback(text)
+        
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        prompt = (
+            "You are an AI triaging fuel station complaints. "
+            f"Categorize the following complaint into exactly one of these categories: "
+            f"{list(CATEGORY_KEYWORDS.keys()) + ['unclassified']}. "
+            "If it does not fit neatly into one, return 'unclassified'.\n\n"
+            f"Complaint text: '{text}'"
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt,
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': ComplaintClassification,
+                'temperature': 0.1,
+            },
+        )
+        
+        category = response.parsed.category if response.parsed else "unclassified"
+        if category not in CATEGORY_KEYWORDS and category != "unclassified":
+            return "unclassified"
+        
+        return category
+        
+    except Exception as e:
+        logger.error(f"Gemini API failed: {e}. Falling back to keyword matcher.")
+        return classify_with_keyword_fallback(text)

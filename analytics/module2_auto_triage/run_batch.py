@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from analytics.module2_auto_triage.complaint_classifier import classify_complaint  # noqa: E402
 from analytics.module2_auto_triage.correlator import correlate, TelemetryContext  # noqa: E402
+from analytics.module2_auto_triage.rag_repair import get_repair_instructions  # noqa: E402
 
 INSERT_TRIAGE_SUGGESTION = (
     "INSERT INTO triage_suggestions "
@@ -97,9 +98,12 @@ def run(dsn: str, window_hours: float) -> None:
         ctx = fetch_context(cursor, ro_id, complaint_time, window_hours)
         suggestion = correlate(category, ctx)
 
+        repair_instructions = get_repair_instructions(suggestion.suggested_root_cause)
+        enriched_root_cause = f"{suggestion.suggested_root_cause}\n\n🔧 REPAIR PLAN:\n{repair_instructions}"
+
         cursor.execute(INSERT_TRIAGE_SUGGESTION, (
             complaint_time, ro_id, complaint_id, suggestion.complaint_category,
-            suggestion.suggested_root_cause, suggestion.confidence, suggestion.priority, suggestion.evidence,
+            enriched_root_cause, suggestion.confidence, suggestion.priority, suggestion.evidence,
         ))
         cursor.execute(MARK_PROCESSED, (complaint_id,))
         n_written += 1
